@@ -1,1 +1,1 @@
-# Golang Developer. Professional (OTUS). Проектная работа "Системный монитор"
+# Golang Developer. Professional (OTUS): Проектная работа "Системный монитор"

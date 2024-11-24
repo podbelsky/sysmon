@@ -1,0 +1,28 @@
+syntax = "proto3";
+
+
+package sysmon.v1;
+
+option go_package = "sysmon/v1";
+
+// System monitor service API
+service SysmonAPI {
+  // Получить статистику
+  rpc GetStat (GetStatRequest) returns (stream GetStatResponse);
+}
+
+// Запрос на получение статистики
+message GetStatRequest {
+  // период отдачи статистики, сек (каждые N)
+  int32 period = 1;
+  // диапазон усреднения, сек (за последние M)
+  int32 average = 2;
+}
+
+// Поток статистики
+message GetStatResponse {
+  // данные
+  bytes data =1;
+}
+
+
