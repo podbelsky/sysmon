@@ -1,12 +1,12 @@
 syntax = "proto3";
 
 
-package sysmon.v1;
+package monitor.v1;
 
-option go_package = "sysmon/v1";
+option go_package = "monitor/v1";
 
-// System monitor service API
-service SysmonAPI {
+// System stats monitor service API
+service MonitorAPI {
   // Получить статистику
   rpc GetStat (GetStatRequest) returns (stream GetStatResponse);
 }
