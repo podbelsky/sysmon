@@ -32,7 +32,7 @@ func (b *Builder) gRPCServer(ctx context.Context) *grpc.Server {
 	grpcServer := grpc.NewServer(serverOpts...)
 
 	b.shutdown.add(func(ctx context.Context) error {
-		grpcServer.GracefulStop()
+		grpcServer.Stop()
 
 		return nil
 	})
@@ -45,6 +45,8 @@ func (b *Builder) Listener() (net.Listener, error) {
 	if err != nil {
 		return nil, errors.Wrap(err, "start network listener")
 	}
+
+	b.logger.Info().Str("address", b.config.GRPCAddr()).Msg("Listen gRPC")
 
 	return listener, nil
 }

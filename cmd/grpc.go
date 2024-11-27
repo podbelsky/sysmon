@@ -6,6 +6,7 @@ import (
 	"github.com/cockroachdb/errors"
 	"github.com/podbelsky/sysmon/internal/build"
 	"github.com/podbelsky/sysmon/internal/config"
+	"github.com/rs/zerolog"
 	"github.com/spf13/cobra"
 	grpclib "google.golang.org/grpc"
 )
@@ -29,10 +30,16 @@ func grpcCmd(ctx context.Context, conf config.Config) *cobra.Command {
 				return errors.Wrap(err, "start network listener")
 			}
 
-			server, err := builder.MonitorGRPCServer(ctx)
+			server, service, err := builder.MonitorGRPCServer(ctx)
 			if err != nil {
 				return errors.Wrap(err, "build grpc server")
 			}
+
+			go func() {
+				if err = service.Start(); err != nil {
+					zerolog.Ctx(ctx).Err(err).Msg("run monitor service")
+				}
+			}()
 
 			if err = server.Serve(listener); !errors.Is(err, grpclib.ErrServerStopped) {
 				return errors.Wrap(err, "run grpc server")

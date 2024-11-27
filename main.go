@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"os"
+	"time"
 
 	"github.com/podbelsky/sysmon/cmd"
 	"github.com/podbelsky/sysmon/internal/config"
@@ -22,10 +23,9 @@ func main() {
 
 	log := zerolog.New(os.Stderr).
 		Level(logLevel).
-		Output(zerolog.ConsoleWriter{Out: os.Stderr}).
+		Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.TimeOnly}).
 		With().Timestamp(). //Caller().
 		Str("service.name", conf.App.Name).
-		Str("service.grpc", conf.GRPCAddr()).
 		Logger()
 
 	ctx := log.WithContext(context.Background())
