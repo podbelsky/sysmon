@@ -21,6 +21,7 @@ TAGS =
 UTILS_COMMAND = docker build -q -f .docker/utils/Dockerfile .docker/utils | xargs -I % docker run --rm -v .:/src %
 
 .PHONY: *
+
 #build-binary: ## build a binary
 #	go build -tags '${TAGS}' ${LDFLAGS} -o bin/app
 #build push pull:
@@ -29,14 +30,23 @@ UTILS_COMMAND = docker build -q -f .docker/utils/Dockerfile .docker/utils | xarg
 #	make -C .docker/build $@
 
 # Запуск/остановка локального окружения
-#up down stop:
-#	make -C .docker/development $@
-#bash-% logs-% restart-%:
-#	make -C .docker/development $@
+up down stop:
+	make -C .docker/development $@
+bash-% logs-% restart-%:
+	make -C .docker/development $@
+
+run: ## Start docker development environment and run app
+	docker exec -it sysmon-app /bin/bash -c "go run main.go grpc"
+
+run-client: ## Start docker development environment and run app
+	docker exec -it sysmon-app /bin/bash -c "go run ./cmd/client/ -M 2 -N 10 -address localhost -port 8081"
 
 # Запуск всех тестов
 test:
 	go test -tags mock,integration -race -cover ./...
+
+test-unit:
+	go test -tags mock -race -count 10 ./...
 
 # Запуск всех тестов с выключенным кешированием результата
 test-no-cache:
