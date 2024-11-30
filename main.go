@@ -24,7 +24,7 @@ func main() {
 	log := zerolog.New(os.Stderr).
 		Level(logLevel).
 		Output(zerolog.ConsoleWriter{Out: os.Stderr, TimeFormat: time.TimeOnly}).
-		With().Timestamp(). //Caller().
+		With().Timestamp().
 		Str("service.name", conf.App.Name).
 		Logger()
 

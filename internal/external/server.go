@@ -1,10 +1,10 @@
 package external
 
 import (
-	"context"
 	"encoding/json"
 	"time"
 
+	"github.com/podbelsky/sysmon/internal/model"
 	v1 "github.com/podbelsky/sysmon/pkg/monitor/v1"
 	"github.com/rs/zerolog"
 	"google.golang.org/grpc/peer"
@@ -13,7 +13,8 @@ import (
 type Service interface {
 	Start() error
 	Stop() error
-	GetAverageStat(ctx context.Context, average int) interface{}
+	// GetAverageStat усредненная статистика за число секунд
+	GetAverageStat(average int) model.Snapshot
 }
 
 type Server struct {
@@ -49,7 +50,7 @@ func (s *Server) GetStat(request *v1.GetStatRequest, server v1.MonitorAPI_GetSta
 	defer s.logger.Info().Str("address", address).Msg("End gRPC connection")
 
 	send := func() error {
-		r := s.service.GetAverageStat(server.Context(), int(request.GetAverage()))
+		r := s.service.GetAverageStat(int(request.GetAverage()))
 		b, err := json.Marshal(&r)
 		if err != nil {
 			return err

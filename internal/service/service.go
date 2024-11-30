@@ -1,13 +1,14 @@
 package service
 
 import (
-	"context"
+	"fmt"
 	"sync"
 	"time"
 
 	"github.com/cockroachdb/errors"
 	"github.com/podbelsky/sysmon/internal/config"
 	"github.com/podbelsky/sysmon/internal/model"
+	"github.com/podbelsky/sysmon/internal/stat"
 	"github.com/rs/zerolog"
 )
 
@@ -16,33 +17,58 @@ var (
 )
 
 type Service struct {
-	cfgTime config.Time
-	cfgStat config.Stat
+	cfg config.Time
 
-	exitChan chan struct{}
-	wg       sync.WaitGroup
+	data    model.Storage
+	workers []stat.Fn
+
+	done chan struct{}
+	wg   sync.WaitGroup
 
 	logger *zerolog.Logger
 }
 
-func NewService(t config.Time, s config.Stat, l *zerolog.Logger) (*Service, error) {
+func NewService(t config.Time, s config.Stat, collector stat.Collector, l *zerolog.Logger) (*Service, error) {
 	if t.Store < t.Snap {
 		return nil, ErrStoreLessSnap
 	}
 
-	return &Service{
-		cfgTime: t,
-		cfgStat: s,
+	workers := make([]stat.Fn, 0)
+	if s.LA {
+		workers = append(workers, collector.LoadAvg)
+	}
+	if s.CPU {
+		workers = append(workers, collector.CPUAvgStats)
+	}
+	if s.DiskLoad {
+		workers = append(workers, collector.DisksLoad)
+	}
+	if s.DiskUse {
+		workers = append(workers, collector.DisksUsage)
+	}
 
-		exitChan: make(chan struct{}),
-		wg:       sync.WaitGroup{},
+	maxSize := int(t.Store/t.Snap) + 1
+
+	return &Service{
+		cfg:     t,
+		workers: workers,
+		data: model.Storage{
+			History: make(map[int]model.Snapshot, maxSize),
+			Limit:   maxSize,
+		},
+		done: make(chan struct{}),
+		wg:   sync.WaitGroup{},
 
 		logger: l,
 	}, nil
 }
 
 func (s *Service) Start() error {
-	s.logger.Info().Msg("Starting monitor service...")
+	s.logger.Info().
+		Str("time.snap", s.cfg.Snap.String()).
+		Str("time.clean", s.cfg.Clean.String()).
+		Str("time.store", s.cfg.Store.String()).
+		Msg("Starting monitor service...")
 
 	wg := sync.WaitGroup{}
 	wg.Add(2)
@@ -65,50 +91,130 @@ func (s *Service) Start() error {
 func (s *Service) Stop() error {
 	s.logger.Info().Msg("Stopping monitor service...")
 
-	close(s.exitChan)
-	//s.stat.Close()
+	close(s.done)
 	s.wg.Wait()
 
 	return nil
 }
 
-func (s *Service) GetAverageStat(ctx context.Context, average int) interface{} {
-	// TODO implement
+func (s *Service) GetAverageStat(average int) model.Snapshot {
+	if average <= 0 {
+		s.logger.Error().Int("average", average).Msg("average must be gt zero")
 
-	r := []model.DataToClientStamp{
-		{
-			Name:      "test",
-			IdxHeader: 0,
-			Data: [][]string{
-				{"123", "456", "789"},
-				{"222", "333", "444"},
-			},
-		},
+		return nil
 	}
 
-	return r
+	s.data.Lock.RLock()
+	defer s.data.Lock.RUnlock()
+
+	size := len(s.data.Index)
+	snapPeriodSecond := int(s.cfg.Snap / time.Second)
+	if snapPeriodSecond*size < average {
+		s.logger.Warn().Msg("stat dept lower than average period")
+
+		return nil
+	}
+
+	elementsNum := average / snapPeriodSecond
+	if elementsNum == 0 {
+		elementsNum = 1
+	}
+
+	res := make(model.Snapshot, len(s.workers))
+
+	for i := 1; i <= elementsNum; i++ {
+		offset := elementsNum - i
+		snapshot, ok := s.data.History[s.data.Index[offset]]
+		if !ok {
+			continue
+		}
+
+		for name, bucket := range snapshot {
+			sumBucket, ok := res[name]
+
+			if !ok {
+				res[name] = bucket
+				continue
+			}
+
+			for j, val := range bucket.Data {
+				sumBucket.Data[j].Dec += val.Dec
+			}
+		}
+	}
+
+	for name, bucket := range res {
+		for j, val := range bucket.Data {
+			bucket.Data[j].Dec = val.Dec / float64(elementsNum)
+		}
+
+		bucket.Name = fmt.Sprintf("%s(%d)", bucket.Name, elementsNum)
+		res[name] = bucket
+	}
+
+	return res
 }
 
 func (s *Service) snap() {
-	ticker := time.NewTicker(s.cfgTime.Snap)
+	ticker := time.NewTicker(s.cfg.Snap)
 	defer func() {
 		ticker.Stop()
 	}()
 
+	collect := func() {
+		snapshot := make(model.Snapshot, len(s.workers))
+
+		wg := &sync.WaitGroup{}
+		wg.Add(len(s.workers))
+
+		for _, fn := range s.workers {
+			go func() {
+				defer wg.Done()
+
+				bucket, err := fn()
+				if err != nil {
+					if !errors.Is(err, stat.ErrNotImplemented) {
+						s.logger.Err(err).Msg("get stat failed")
+					}
+
+					return
+				}
+
+				snapshot[bucket.Name] = *bucket
+
+				s.logger.Trace().Msgf("%v", bucket)
+			}()
+		}
+
+		wg.Wait()
+
+		s.data.Lock.Lock()
+
+		s.data.Counter++
+		s.data.Index = append(s.data.Index, s.data.Counter)
+		s.data.History[s.data.Counter] = snapshot
+
+		s.data.Lock.Unlock()
+
+		s.logger.Debug().
+			Int("stat.size", len(s.data.History)).
+			//Str("snapshot", fmt.Sprintf("%v", snapshot)).
+			Msg("snap")
+	}
+	collect()
+
 	for {
 		select {
 		case <-ticker.C:
-			s.logger.Debug().Msg("snap")
-			// TODO implement
-
-		case <-s.exitChan:
+			collect()
+		case <-s.done:
 			return
 		}
 	}
 }
 
 func (s *Service) clean() {
-	ticker := time.NewTicker(s.cfgTime.Clean)
+	ticker := time.NewTicker(s.cfg.Clean)
 	defer func() {
 		ticker.Stop()
 	}()
@@ -116,20 +222,23 @@ func (s *Service) clean() {
 	for {
 		select {
 		case <-ticker.C:
-			s.logger.Debug().Msg("clean")
-			// TODO implement
+			s.data.Lock.Lock()
 
-			//s.data.Lock.Lock()
-			//num := len(s.data.Index) - s.data.MaxElements
-			//if num > 0 {
-			//	for i := 0; i < num; i++ {
-			//		idx := s.data.Index[0]
-			//		delete(s.data.Elements, idx)
-			//		s.data.Index = s.data.Index[1:len(s.data.Index)]
-			//	}
-			//}
-			//s.data.Lock.Unlock()
-		case <-s.exitChan:
+			num := len(s.data.Index) - s.data.Limit
+			if num > 0 {
+				for i := 0; i < num; i++ {
+					idx := s.data.Index[0]
+					delete(s.data.History, idx)
+					s.data.Index = s.data.Index[1:len(s.data.Index)]
+				}
+			}
+
+			s.data.Lock.Unlock()
+			s.logger.Debug().
+				Int("data.size", len(s.data.History)).
+				Msg("clean")
+
+		case <-s.done:
 			return
 		}
 	}
