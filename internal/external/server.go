@@ -51,6 +51,10 @@ func (s *Server) GetStat(request *v1.GetStatRequest, server v1.MonitorAPI_GetSta
 
 	send := func() error {
 		r := s.service.GetAverageStat(int(request.GetAverage()))
+		if r == nil {
+			return nil
+		}
+
 		b, err := json.Marshal(&r)
 		if err != nil {
 			return err
