@@ -19,6 +19,7 @@ func Run(ctx context.Context, conf config.Config) error {
 
 	root.AddCommand(
 		grpcCmd(ctx, conf),
+		clientCmd(ctx, conf),
 	)
 
 	return errors.Wrap(root.ExecuteContext(ctx), "run application")

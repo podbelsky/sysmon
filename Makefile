@@ -34,6 +34,9 @@ bash-% logs-% restart-%:
 run: ## Start docker development environment and run app
 	docker exec -it sysmon-app /bin/bash -c "go run main.go grpc"
 
+run-client:
+	docker exec -it sysmon-app /bin/bash -c "go run main.go client"
+
 # Запуск всех тестов
 test:
 	go test -tags mock,integration -race -cover ./...
