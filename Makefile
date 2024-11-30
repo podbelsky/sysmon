@@ -22,12 +22,8 @@ UTILS_COMMAND = docker build -q -f .docker/utils/Dockerfile .docker/utils | xarg
 
 .PHONY: *
 
-#build-binary: ## build a binary
-#	go build -tags '${TAGS}' ${LDFLAGS} -o bin/app
-#build push pull:
-#	make -C .docker/build $@
-#build-%:
-#	make -C .docker/build $@
+build: ## build a binary
+	go build -tags '${TAGS}' ${LDFLAGS} -o bin/app
 
 # Запуск/остановка локального окружения
 up down stop:
@@ -37,9 +33,6 @@ bash-% logs-% restart-%:
 
 run: ## Start docker development environment and run app
 	docker exec -it sysmon-app /bin/bash -c "go run main.go grpc"
-
-run-client: ## Start docker development environment and run app
-	docker exec -it sysmon-app /bin/bash -c "go run ./cmd/client/ -M 2 -N 10 -address localhost -port 8081"
 
 # Запуск всех тестов
 test:
