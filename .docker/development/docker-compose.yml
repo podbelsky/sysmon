@@ -1,0 +1,22 @@
+version: '3.9'
+
+name: otus-sysmon
+
+networks:
+    local:
+
+services:
+    sysmon:
+        image: sysmon-dev
+        container_name: sysmon-app
+        working_dir: /app
+        ports:
+            - 8081:8081
+        networks:
+            - local
+        build:
+            context: ../../
+            dockerfile: ./.docker/development/Dockerfile
+            target: dev
+        volumes:
+            - ../../:/app
